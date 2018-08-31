@@ -90,7 +90,8 @@ WebVRConfig = {
 <!--
   three.js 3d library
 -->
-<script src="node_modules/three/build/three.min.js"></script>
+<!-- <script src="node_modules/three/build/three.min.js"></script> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/95/three.min.js"></script>
 
 <!--
   VRControls.js acquires positional information from connected VR devices and applies the transformations to a three.js camera object.
@@ -112,6 +113,114 @@ WebVRConfig = {
 -->
 <script src="node_modules/webvr-ui/build/webvr-ui.min.js"></script>
 
+<script src="http://threejs.org/examples/js/loaders/MTLLoader.js"></script>
+<script src="http://threejs.org/examples/js/loaders/OBJLoader.js"></script>
+<script src="http://threejs.org/examples/js/loaders/ColladaLoader.js"></script>
+<script>
+  let naruto, mixer;
+  const loadScene = function(){
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5)
+        .translateX(200).translateY(200).translateZ(200);
+    scene.add(directionalLight);
+
+    let vShader, fShader;
+    function applyShaderCallback(map, child, texture) { 
+        return function(){
+            map[child.material.id] = new THREE.ShaderMaterial({
+                uniforms: {
+                    lightSrc: { type: "v3", value: directionalLight.position },
+                    texture: { type: "t", value: texture }
+                },
+                vertexShader: vShader,
+                fragmentShader: fShader
+            });
+            child.material = map[child.material.id];
+        }; 
+    };
+    const shaderCallbackList = [];
+    function tryApplyShader() {
+        if(fShader && vShader){
+            shaderCallbackList.reduce(function(_, item){
+                item();
+            }, undefined);
+        }
+    }
+
+    {
+        const fileLoader = new THREE.FileLoader();
+        fileLoader.load('cg06a_vertex.glsl',
+            function (data) {
+                vShader = data;
+                tryApplyShader();
+            });
+        fileLoader.load('cg06a_fragment.glsl', function (data) {
+                fShader = data;
+                tryApplyShader();
+        });
+    }
+
+    /*const folderPath = 'models/dae/Run/86b61s2onq-Naruto/';
+    new THREE.MTLLoader().setPath(folderPath).load('2nrtbod1out.mtl', function (materials) {
+        materials.preload();
+        new THREE.OBJLoader()
+            .setMaterials(materials)
+            .setPath(folderPath)
+            .load('2nrtbod1out.obj', function (object) {
+                const textureLoader = new THREE.TextureLoader().setPath(folderPath);
+                const materialMap = {};
+                object.traverse(function (child) {
+                    if (child instanceof THREE.Mesh) {
+                        if (child.material.id in materialMap) {
+                            console.log("Using predefined material", child.material.id);
+                            child.material = materialMap[child.material.id];
+                        }
+                        else {
+                            console.log("Creating new material", child.material.id, child.material);
+
+                            if (child.material.name != "Material__3")
+                                texture = textureLoader.load("ntxr001.png");
+                            else
+                                texture = textureLoader.load("ntxr004.png");
+                            
+                            shaderCallbackList.push(applyShaderCallback(materialMap, child, texture));
+                            tryApplyShader();
+                        }
+
+                    }
+                });
+                //object.position.set(0, -100, 300);
+                object.position.set(0, 0.1, -3);
+                object.scale.set(0.01, 0.01, 0.01);
+                object.rotation.set(-Math.PI / 2, 0, 0);
+                scene.add(object);
+                naruto = object;
+        });
+    });*/
+    new THREE.ColladaLoader().load('models/dae/Run/Run.dae',
+      function (collada) {
+
+          var animations = collada.animations;
+          naruto = collada.scene;
+
+          naruto.scale.set(0.01, 0.01, 0.01);
+          naruto.position.set(0, 0.1, -5);
+          naruto.rotation.set(0, Math.PI / 4, 0);
+
+          scene.add(naruto);
+
+          mixer = new THREE.AnimationMixer(naruto);   // create global mixer
+          mixer.clipAction(animations[0]).play();     // play first animation clip
+
+      }
+    );
+  };
+  const clock = new THREE.Clock();
+  const render = function(){
+   if(mixer) mixer.update(clock.getDelta());
+  };
+</script>
+
+
 
 <script>
 // Last time the scene was rendered.
@@ -119,7 +228,7 @@ var lastRenderTime = 0;
 // Currently active VRDisplay.
 var vrDisplay;
 // How big of a box to render.
-var boxSize = 5;
+var boxSize = 100;
 // Various global THREE.Objects.
 var scene;
 var cube;
@@ -133,7 +242,7 @@ var vrButton;
 function onLoad() {
   // Setup three.js WebGL renderer. Note: Antialiasing is a big performance hit.
   // Only enable it if you actually need to.
-  var renderer = new THREE.WebGLRenderer({antialias: true});
+  var renderer = new THREE.WebGLRenderer({antialias: !true});
   renderer.setPixelRatio(window.devicePixelRatio);
 
   // Append the canvas element created by the renderer to document body element.
@@ -158,16 +267,7 @@ function onLoad() {
   var loader = new THREE.TextureLoader();
   loader.load('img/box.png', onTextureLoaded);
 
-  // Create 3D objects.
-  var geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  var material = new THREE.MeshNormalMaterial();
-  cube = new THREE.Mesh(geometry, material);
-
-  // Position cube mesh to be right in front of you.
-  cube.position.set(0, controls.userHeight, -1);
-
-  // Add cube mesh to your three.js scene
-  scene.add(cube);
+  loadScene();
 
   window.addEventListener('resize', onResize, true);
   window.addEventListener('vrdisplaypresentchange', onResize, true);
@@ -217,15 +317,12 @@ function onTextureLoaded(texture) {
   setupStage();
 }
 
-
-
 // Request animation frame loop function
 function animate(timestamp) {
-  var delta = Math.min(timestamp - lastRenderTime, 500);
+  var delta = Math.max(timestamp - lastRenderTime, 500);
   lastRenderTime = timestamp;
 
-  // Apply rotation to cube mesh
-  cube.rotation.y += delta * 0.0006;
+  render();
 
   // Only update controls if we're presenting.
   if (vrButton.isPresenting()) {
